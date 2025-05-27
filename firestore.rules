@@ -1,0 +1,75 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidTransaction() {
+      return request.resource.data.keys().hasAll(['userId', 'amount', 'type', 'description', 'category', 'timestamp']) &&
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.amount is number &&
+             request.resource.data.type in ['income', 'expense'] &&
+             request.resource.data.description is string &&
+             request.resource.data.category is string;
+    }
+    
+    function isValidBudget() {
+      return request.resource.data.keys().hasAll(['userId', 'category', 'total', 'spent', 'period']) &&
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.total is number &&
+             request.resource.data.spent is number &&
+             request.resource.data.period in ['monthly', 'weekly', 'yearly'];
+    }
+    
+    function isValidSavingsGoal() {
+      return request.resource.data.keys().hasAll(['userId', 'goal', 'targetAmount', 'currentAmount', 'targetDate']) &&
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.targetAmount is number &&
+             request.resource.data.currentAmount is number &&
+             request.resource.data.targetDate is timestamp;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        request.resource.data.keys().hasAll(['firstName', 'lastName', 'email', 'createdAt']) &&
+        request.resource.data.firstName is string &&
+        request.resource.data.lastName is string &&
+        request.resource.data.email is string;
+      allow update: if isOwner(userId);
+      allow delete: if false; // Prevent user profile deletion
+    }
+    
+    // Transactions
+    match /transactions/{transactionId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isValidTransaction();
+      allow update: if isOwner(resource.data.userId) && isValidTransaction();
+      allow delete: if isOwner(resource.data.userId);
+    }
+    
+    // Budgets
+    match /budgets/{budgetId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isValidBudget();
+      allow update: if isOwner(resource.data.userId) && isValidBudget();
+      allow delete: if isOwner(resource.data.userId);
+    }
+    
+    // Savings goals
+    match /savings/{savingId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isValidSavingsGoal();
+      allow update: if isOwner(resource.data.userId) && isValidSavingsGoal();
+      allow delete: if isOwner(resource.data.userId);
+    }
+  }
+} 
